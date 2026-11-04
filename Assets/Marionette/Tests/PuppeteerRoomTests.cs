@@ -289,6 +289,33 @@ namespace Marionette.Tests
             model.SetActive(false);
         }
 
+        [UnityTest]
+        public IEnumerator AChairModelReplacesTheStandInChair()
+        {
+            var s = Build();
+            var chair = s.room.chair;
+            var model = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            model.name = "TestChair";
+            model.SetActive(false);
+            chair.model = model;
+            model.SetActive(true);
+            yield return null;
+            yield return null;
+            Assert.IsNotNull(chair.ModelInstance, "the chair model is used");
+            Assert.IsNull(chair.ModelInstance.GetComponent<Collider>(), "its colliders are removed");
+            foreach (var r in chair.standIn) Assert.IsFalse(r.enabled, $"stand-in {r.name} hidden");
+            Assert.IsNotNull(chair.GetComponentInChildren<Collider>(), "the stand-in colliders stay, so the chair can still be pinched");
+            Assert.Less(Vector3.Distance(chair.panel.localPosition, chair.modelPanelPosition), 1e-4f, "the panel sits on the model's arm");
+            Assert.AreEqual(3, chair.panel.GetComponentsInChildren<RoomButton>().Length, "with its buttons");
+            model.SetActive(false);
+
+            // Still works: sit down and take control.
+            yield return SitDown(s);
+            s.panel.TakeControl();
+            yield return null;
+            Assert.IsTrue(s.room.link.IsConnected);
+        }
+
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
     }
 }

@@ -156,12 +156,53 @@ namespace Marionette.Room
         }
     }
 
-    /// <summary>The chair: pinch it for Enter Chair / Cancel, or Exit Chair / Cancel when sitting in it.</summary>
+    /// <summary>
+    /// The chair: pinch it for Enter Chair / Cancel, or Exit Chair / Cancel when sitting in it.
+    /// Uses a local chair model if there is one (Resources/ChairModel, never committed): the stand-in parts are
+    /// hidden but keep their colliders, and the armrest panel moves onto the model's right arm.
+    /// </summary>
     public class RoomChair : MonoBehaviour, IRoomTarget
     {
         public PuppeteerRoom room;
         public Transform eyePoint, standPoint;
         public ChoiceMenu menu;
+        [Tooltip("The armrest panel, moved onto the model's arm when a model is used.")]
+        public Transform panel;
+        [Tooltip("The stand-in chair's visible parts, hidden when a model is used.")]
+        public Renderer[] standIn;
+
+        [Header("Model (optional, kept local: never committed)")]
+        public GameObject model;
+        public string modelResource = "ChairModel";
+        [Tooltip("Model size multiplier (1 = the model's own metres).")]
+        public float modelScale = 1f;
+        [Tooltip("Turn the model about the vertical so its seat faces forward, degrees.")]
+        public float modelYaw = 0f;
+        [Tooltip("Where the armrest panel goes on the model, in the chair's space (front of the right arm, just above it).")]
+        public Vector3 modelPanelPosition = new Vector3(0.37f, 0.62f, 0.2f);
+
+        public GameObject ModelInstance { get; private set; }
+
+        void Start() => UseModel();
+
+        void UseModel()
+        {
+            var source = model != null ? model : (string.IsNullOrEmpty(modelResource) ? null : Resources.Load<GameObject>(modelResource));
+            if (source == null) return;
+            var instance = Instantiate(source, transform, false);
+            instance.name = source.name;
+            instance.transform.localPosition = Vector3.zero;
+            instance.transform.localRotation = Quaternion.Euler(0f, modelYaw, 0f);
+            instance.transform.localScale = Vector3.one * modelScale;
+            foreach (var c in instance.GetComponentsInChildren<Collider>()) Destroy(c);
+            if (standIn != null) foreach (var r in standIn) if (r != null) r.enabled = false;
+            if (panel != null && eyePoint != null)
+            {
+                panel.localPosition = modelPanelPosition;
+                panel.rotation = Quaternion.LookRotation(panel.position - eyePoint.position, transform.up); // +Z away from the viewer
+            }
+            ModelInstance = instance;
+        }
 
         public Vector3 Facing => Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
 

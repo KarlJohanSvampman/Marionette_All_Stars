@@ -103,6 +103,7 @@ namespace Marionette.Room
                 Box(chairRoot, "Leg", new Vector3(x, 0f, z), new Vector3(0.05f, 0.42f, 0.05f), m.darkWood);
             foreach (var x in new[] { -0.3f, 0.3f })
                 Box(chairRoot, "ArmPost", new Vector3(x, 0.42f, 0.2f), new Vector3(0.04f, 0.2f, 0.04f), m.darkWood);
+            chair.standIn = chairRoot.GetComponentsInChildren<Renderer>();
             chair.eyePoint = Point(chairRoot, "SeatedEye", new Vector3(0f, 1.15f, -0.05f));
             chair.standPoint = Point(chairRoot, "StandHere", new Vector3(0.75f, 0f, 0.3f));
 
@@ -118,6 +119,7 @@ namespace Marionette.Room
             backing.transform.localPosition = new Vector3(0f, -0.005f, 0.012f);
             backing.transform.localScale = new Vector3(0.27f, 0.12f, 0.012f);
             backing.GetComponent<Renderer>().sharedMaterial = m.panel;
+            chair.panel = panelRoot;
             var panel = panelRoot.gameObject.AddComponent<ArmrestPanel>();
             panel.room = room;
             panel.beamer = beamer;

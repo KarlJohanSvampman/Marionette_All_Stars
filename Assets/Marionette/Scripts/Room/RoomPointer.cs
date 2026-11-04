@@ -35,6 +35,9 @@ namespace Marionette.Room
         [Tooltip("Fingertip radius for poking buttons, metres.")]
         public float pokeRadius = 0.012f;
         public Color rayColor = new Color(0.6f, 0.9f, 1f, 0.8f);
+        [Tooltip("The ray is always drawn faintly, this long (metres), so you can see where you point; bright when it's on something.")]
+        public float idleRayLength = 1.5f;
+        public Color idleRayColor = new Color(0.8f, 0.9f, 1f, 0.25f);
 
         RoomHands m_Hands;
         readonly IRoomTarget[] m_Pressed = new IRoomTarget[2];
@@ -131,13 +134,15 @@ namespace Marionette.Room
                 target = hit.collider.GetComponentInParent<IRoomTarget>();
                 point = hit.point;
             }
+            ray.enabled = target != null || (!hand.pinching && !m_Hands.UsingMouse); // the mouse ray comes from the eye: no idle line
+            ray.widthMultiplier = (target != null ? 0.004f : 0.002f) * scale;
+            ray.startColor = target != null ? rayColor : idleRayColor;
+            ray.endColor = new Color(ray.startColor.r, ray.startColor.g, ray.startColor.b, 0.05f);
+            ray.SetPosition(0, hand.aim.origin);
+            ray.SetPosition(1, target != null ? point : hand.aim.origin + hand.aim.direction * (Mathf.Min(idleRayLength, hit.collider != null ? hit.distance / scale : idleRayLength) * scale));
             if (target != null)
             {
                 target.OnPointerHover(point);
-                ray.enabled = true;
-                ray.widthMultiplier = 0.004f * scale;
-                ray.SetPosition(0, hand.aim.origin);
-                ray.SetPosition(1, point);
                 dot.gameObject.SetActive(true);
                 dot.position = point;
                 dot.localScale = Vector3.one * (0.015f * scale / Mathf.Max(1e-4f, dot.parent.lossyScale.x));

@@ -168,6 +168,7 @@ namespace Marionette.Room
             var hands = GetOrAdd<RoomHands>(origin.gameObject);
             hands.origin = origin;
             room.pointer = GetOrAdd<RoomPointer>(origin.gameObject);
+            GetOrAdd<RoomTurn>(origin.gameObject).room = room;
 
             // ---- The connection to the puppet ----
             var link = GetOrAdd<PuppetLink>(spawner.gameObject);

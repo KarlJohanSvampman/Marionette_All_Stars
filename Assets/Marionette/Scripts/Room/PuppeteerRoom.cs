@@ -26,6 +26,9 @@ namespace Marionette.Room
         void Awake()
         {
             if (origin == null) origin = FindAnyObjectByType<XROrigin>();
+            // Rooms built before edge turning existed get it here.
+            if (origin != null && origin.GetComponent<RoomHands>() != null && origin.GetComponent<RoomTurn>() == null)
+                origin.gameObject.AddComponent<RoomTurn>().room = this;
         }
 
         /// <summary>Move so the head is above floorPoint, keeping the way you face.</summary>
@@ -161,7 +164,7 @@ namespace Marionette.Room
     /// Uses a local chair model if there is one (Resources/ChairModel, never committed): the stand-in parts are
     /// hidden but keep their colliders, and the armrest panel moves onto the model's right arm.
     /// </summary>
-    public class RoomChair : MonoBehaviour, IRoomTarget
+    public class RoomChair : MonoBehaviour, IRoomTarget, IPokeable
     {
         public PuppeteerRoom room;
         public Transform eyePoint, standPoint;
@@ -209,6 +212,8 @@ namespace Marionette.Room
         public void OnPointerHover(Vector3 point) { }
         public void OnPointerPress(Vector3 point) => OpenMenu();
         public void OnPointerRelease(Vector3 point) { }
+        /// <summary>Touching the chair while standing opens its menu too (not while sitting: your hands rest on it).</summary>
+        public void Poke() { if (room != null && !room.Seated && (menu == null || !menu.IsOpen)) OpenMenu(); }
 
         public void OpenMenu()
         {

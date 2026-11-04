@@ -37,6 +37,8 @@ namespace Marionette.Room
         }
 
         public readonly Hand left = new Hand(), right = new Hand();
+        /// <summary>Tests and scripted demos set the hands themselves: tracking isn't read.</summary>
+        [System.NonSerialized] public bool simulated;
         public Hand this[int i] => i == 0 ? left : right;
         /// <summary>No hand tracking: the mouse stands in for the right hand.</summary>
         public bool UsingMouse { get; private set; }
@@ -55,6 +57,7 @@ namespace Marionette.Room
 
         void Update()
         {
+            if (simulated) { UsingMouse = false; return; }
             bool hands = EnsureSubsystem() && (m_Subsystem.leftHand.isTracked || m_Subsystem.rightHand.isTracked);
             UsingMouse = !hands && !XRSettings.isDeviceActive;
             if (hands)

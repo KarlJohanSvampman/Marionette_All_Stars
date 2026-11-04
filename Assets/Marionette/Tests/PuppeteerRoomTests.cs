@@ -316,6 +316,78 @@ namespace Marionette.Tests
             Assert.IsTrue(s.room.link.IsConnected);
         }
 
+        static float Yaw(Transform t)
+        {
+            Vector3 f = Vector3.ProjectOnPlane(t.forward, Vector3.up);
+            return Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+        }
+
+        [UnityTest]
+        public IEnumerator HoldingAHandAtTheEdgeOfTheViewTurnsYou([Values(1, -1)] int side)
+        {
+            var s = Build();
+            yield return Wait(0.5f);
+            var hands = s.origin.GetComponent<RoomHands>();
+            var turn = s.origin.GetComponent<RoomTurn>();
+            hands.simulated = true;
+            var hand = side > 0 ? hands.right : hands.left;
+            hand.tracked = true;
+            float start = Yaw(s.cam.transform);
+            Vector3 headStart = s.cam.transform.position;
+            // Hold the hand still at the edge (it moves with the head, like a real tracked hand would).
+            float end = Time.time + 1.5f;
+            while (Time.time < end)
+            {
+                hand.palm = hand.indexTip = hand.pinchPoint = s.cam.ViewportToWorldPoint(new Vector3(side > 0 ? 0.95f : 0.05f, 0.5f, 0.4f));
+                yield return null;
+            }
+            float turned = Mathf.DeltaAngle(start, Yaw(s.cam.transform));
+            Debug.Log($"[Room] hand at the {(side > 0 ? "right" : "left")} edge for 1.5 s: {turn.Notches} notches, turned {turned:0} deg");
+            Assert.GreaterOrEqual(turn.Notches * side, 2, "keeps turning while the hand is held there");
+            Assert.AreEqual(turn.Notches * turn.notch, turned, 1f, "a notch at a time");
+            Assert.Less(Vector3.Distance(headStart, s.cam.transform.position), 1e-3f, "turning on the spot, about the head");
+
+            // Hand back in the middle: turning stops.
+            int notches = turn.Notches;
+            end = Time.time + 1f;
+            while (Time.time < end)
+            {
+                hand.palm = s.cam.ViewportToWorldPoint(new Vector3(0.5f, 0.5f, 0.4f));
+                yield return null;
+            }
+            Assert.AreEqual(notches, turn.Notches, "a hand in the middle of the view doesn't turn you");
+
+            // Seated: no turning.
+            hands.simulated = false;
+            yield return SitDown(s);
+            hands.simulated = true;
+            hand.tracked = true;
+            end = Time.time + 1.2f;
+            while (Time.time < end)
+            {
+                hand.palm = s.cam.ViewportToWorldPoint(new Vector3(side > 0 ? 0.95f : 0.05f, 0.5f, 0.4f));
+                yield return null;
+            }
+            Assert.AreEqual(notches, turn.Notches, "no turning while seated: the chair faces the puppet");
+        }
+
+        [UnityTest]
+        public IEnumerator TouchingTheChairOpensItsMenu()
+        {
+            var s = Build();
+            yield return Wait(0.5f);
+            var hands = s.origin.GetComponent<RoomHands>();
+            hands.simulated = true;
+            hands.right.tracked = true;
+            Vector3 seat = s.room.chair.transform.TransformPoint(new Vector3(0f, 0.46f, 0f));
+            hands.right.indexTip = hands.right.palm = hands.right.pinchPoint = seat;
+            hands.right.aim = new Ray(seat + Vector3.up, Vector3.up);
+            yield return null;
+            yield return null;
+            Assert.IsTrue(s.room.chair.menu.IsOpen, "touching the chair opens its menu");
+            Assert.AreEqual("Enter Chair", s.room.chair.menu.ActionLabel);
+        }
+
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
     }
 }

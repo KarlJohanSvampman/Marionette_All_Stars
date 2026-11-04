@@ -48,6 +48,7 @@ namespace Marionette.Course
 
         void OnSpawned(MarionetteRig rig)
         {
+            if (!isActiveAndEnabled) return; // a stage the puppet isn't on
             foreach (var id in new[] { PuppetNodeId.Head, PuppetNodeId.Center })
             {
                 var node = rig.Node(id).gameObject;
@@ -76,6 +77,7 @@ namespace Marionette.Course
 
         public void OnFall(string reason)
         {
+            if (!isActiveAndEnabled) return;
             if (m_RespawnAt > 0f || m_EndTime > 0f) return;
             m_Falls++;
             m_LastEvent = $"Fall: {reason}";

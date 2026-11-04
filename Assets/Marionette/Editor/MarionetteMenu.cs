@@ -1,5 +1,6 @@
 using System.IO;
 using Marionette.Course;
+using Marionette.Room;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -63,13 +64,77 @@ namespace Marionette.Editor
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             var origin = HandsXRRig.Create(Vector3.zero, Quaternion.identity);
-            var spawner = CreatePuppeteer(Vector3.zero, k_MouseHeight);
-            var stage = Episode1Builder.Build(spawner, k_MouseHeight, LoadOrCreateEpisode1Materials());
+            float gnome = MarionetteBuilder.ReferenceHeight; // gnome size by default; shrink to mouse size in play
+            var spawner = CreatePuppeteer(Vector3.zero, gnome);
+            var stage = Episode1Builder.Build(spawner, gnome, LoadOrCreateEpisode1Materials());
             // Player behind the start pad; the follow view takes over in Play mode.
             origin.transform.position = spawner.transform.position + new Vector3(0f, 0f, -0.6f);
             Object.DestroyImmediate(spawner.rig.gameObject);
-            spawner.rig = BuildRig(spawner.transform.position, k_MouseHeight);
+            spawner.rig = BuildRig(spawner.transform.position, gnome);
             Save(scene, "Episode1_Balance.unity", stage.gameObject);
+        }
+
+        public const string RoomScenePath = k_SceneDir + "/PuppeteerRoom.unity";
+
+        /// <summary>
+        /// The puppeteer's room: you in first person, the chair, the gnome-sized puppet on its platform, the globe.
+        /// The stages are built far away and switched off until the puppet is beamed there.
+        /// </summary>
+        [MenuItem("Marionette/Create Puppeteer Room (start here)")]
+        public static void CreatePuppeteerRoom()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+
+            var origin = HandsXRRig.Create(Vector3.zero, Quaternion.identity);
+            float gnome = MarionetteBuilder.ReferenceHeight;
+            var spawner = CreatePuppeteer(PuppeteerRoomBuilder.PlatformTop, gnome);
+            var room = PuppeteerRoomBuilder.Build(origin, spawner, LoadOrCreateRoomMaterials());
+
+            // Episode 1 stage at gnome size, far east of the room.
+            var ep1 = Episode1Builder.Build(spawner, gnome, LoadOrCreateEpisode1Materials());
+            ep1.transform.position = new Vector3(300f, 0f, 0f);
+            PuppeteerRoomBuilder.AddDestination(room, "Episode 1: Balance", 35f, -40f, ep1.gameObject,
+                ep1.checkpoints[0].respawnPoint.position, ep1, gnome, null);
+            // The desk course is made for a mouse-sized puppet: arriving there shrinks it.
+            var desk = CourseBuilder.BuildSection1(spawner, LoadOrCreateCourseMaterials());
+            desk.transform.position = new Vector3(600f, 0f, 0f);
+            PuppeteerRoomBuilder.AddDestination(room, "The desk (mouse size)", -20f, 120f, desk.gameObject,
+                desk.checkpoints[0].respawnPoint.position, desk, k_MouseHeight, null);
+
+            // The builders moved the spawner to their start pads; it belongs on the platform.
+            spawner.transform.position = PuppeteerRoomBuilder.PlatformTop;
+            Object.DestroyImmediate(spawner.rig.gameObject);
+            spawner.rig = BuildRig(spawner.transform.position, gnome);
+            Save(scene, "PuppeteerRoom.unity", room.gameObject);
+        }
+
+        static PuppeteerRoomBuilder.Materials LoadOrCreateRoomMaterials() => new PuppeteerRoomBuilder.Materials
+        {
+            floor = Lit("Room/Floor", new Color(0.35f, 0.37f, 0.4f), 0.2f, 0f),
+            wall = Lit("Room/Wall", new Color(0.62f, 0.58f, 0.52f), 0.1f, 0f),
+            wood = Lit("Room/Wood", new Color(0.5f, 0.33f, 0.2f), 0.4f, 0f),
+            darkWood = Lit("Room/DarkWood", new Color(0.28f, 0.18f, 0.11f), 0.4f, 0f),
+            metal = Lit("Room/Metal", new Color(0.6f, 0.6f, 0.65f), 0.7f, 1f),
+            cloth = Lit("Room/ChairCloth", new Color(0.35f, 0.08f, 0.1f), 0.2f, 0f),
+            robe = Lit("Room/Robe", new Color(0.07f, 0.06f, 0.08f), 0.15f, 0f),
+            panel = Lit("Room/Panel", new Color(0.12f, 0.13f, 0.16f), 0.5f, 0.3f),
+            button = Lit("Room/Button", new Color(0.2f, 0.25f, 0.32f), 0.5f, 0f),
+            platform = Lit("Room/Platform", new Color(0.3f, 0.32f, 0.38f), 0.5f, 0.5f),
+            pin = Lit("Room/GlobePin", new Color(1f, 0.45f, 0.3f), 0.5f, 0f),
+            holo = Holo("Room/Hologram", new Color(0.4f, 0.85f, 1f, 0.6f)),
+            beam = Holo("Room/Beam", new Color(0.5f, 0.9f, 1f, 0.5f))
+        };
+
+        static Material Holo(string name, Color color)
+        {
+            string path = $"{k_MaterialDir}/{name}.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null) return mat;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            mat = PuppeteerRoomBuilder.Holo(color);
+            AssetDatabase.CreateAsset(mat, path);
+            return mat;
         }
 
         [MenuItem("Marionette/Hand Tracking/Controls - Pinch and Flick")]
@@ -265,7 +330,7 @@ namespace Marionette.Editor
     [InitializeOnLoad]
     static class CreateCourseSceneOnFirstLoad
     {
-        const string k_Done = "Marionette.CourseSceneAutoCreated.v3";
+        const string k_Done = "Marionette.CourseSceneAutoCreated.v4";
 
         static CreateCourseSceneOnFirstLoad()
         {
@@ -291,6 +356,11 @@ namespace Marionette.Editor
             {
                 Debug.Log($"[Marionette] Creating the Episode 1 stage at {MarionetteMenu.Episode1ScenePath}");
                 MarionetteMenu.CreateEpisode1Scene();
+            }
+            if (!File.Exists(MarionetteMenu.RoomScenePath))
+            {
+                Debug.Log($"[Marionette] Creating the puppeteer room at {MarionetteMenu.RoomScenePath}");
+                MarionetteMenu.CreatePuppeteerRoom(); // last, so it opens and is first in Build Settings
             }
         }
     }

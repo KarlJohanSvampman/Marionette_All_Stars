@@ -73,6 +73,9 @@ namespace Marionette
             spawner.gameObject.AddComponent<PuppetFollowView>();
         }
 
+        // Switched back on (the puppeteer reconnected): jump straight behind the puppet instead of gliding there.
+        void OnEnable() => m_Rig = null;
+
         void FixedUpdate()
         {
             var rig = m_Spawner.rig;

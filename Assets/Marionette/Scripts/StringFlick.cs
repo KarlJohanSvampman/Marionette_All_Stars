@@ -136,7 +136,7 @@ namespace Marionette
         public void Play(XRHandsControlInput.FlickTake take)
         {
             int n = take.path.Length;
-            if (n < 3) return;
+            if (n < 3 || !isActiveAndEnabled) return; // switched off: the puppeteer isn't connected (PuppetLink)
             var rig = m_Spawner.rig;
             var balance = rig != null ? rig.GetComponent<BalanceMonitor>() : null;
             if (balance != null && balance.ControlsOverridden) return; // tripping or toppling: no input

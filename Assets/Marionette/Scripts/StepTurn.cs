@@ -62,6 +62,7 @@ namespace Marionette
             switch (m_Phase)
             {
                 case Phase.Idle:
+                    if (m_Rig.rightCross.input == null) return; // nobody on the strings
                     float yaw = m_Rig.rightCross.Yaw;
                     if (Mathf.Abs(yaw) < yawThreshold || !StandingStill()) return;
                     Begin(Mathf.Sign(yaw));

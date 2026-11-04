@@ -216,6 +216,37 @@ This replaces the balance rule in 8b. **The player balances only the upper body;
   - Head movement still shows; drift is recentred at 0.5/s.
 - **Episode 1 stage:** `Marionette > Create Episode 1 Stage`. See 03_VideoEpisodeGuide.md for the dimensions.
 
+## 8c. The puppeteer's room (start scene)
+
+`Marionette > Create Puppeteer Room (start here)` builds `Scenes/PuppeteerRoom.unity` and puts it first in Build Settings.
+
+- **You are the puppeteer, in first person:** a stand-in figure in a dark robe. Your head shows only as a shadow; your hands are the tracked hand meshes. A rigged humanoid model (e.g. from Mixamo) can replace the `Standing` and `Sitting` objects under `PuppeteerBody`.
+- **Moving about:** point at the floor and pinch. The 0.5 m grid cell under the ray lights up, and you teleport there when you let go. On a desktop the mouse is your right hand: left-click pinches, right-drag looks around.
+- **The chair** is in the middle of the room, facing the puppet's platform in a corner. Pinch it to get Enter Chair or Cancel, or Exit Chair when you're sitting. You can't teleport while seated.
+- **The armrest panel** (right armrest; poke a button with a fingertip, or point and pinch):
+  - **Take Control:** the headset view jumps to the third-person camera behind the puppet, scaled to it, and your hands work the strings.
+  - **Globe:** shows or hides the hologram globe. Pinch near it to grab and spin it. Pins are places to go: point and pinch a pin, or touch it, to pick it.
+  - **Beam:** sends whoever is on the platform to the picked place in a column of light. From a stage the puppet can be beamed onward, or home from anywhere ("The workshop" pin).
+- **Destinations:**
+  - The Episode 1 stage at gnome size.
+  - The desk course, which is made for a mouse-sized puppet, so arriving there shrinks it.
+  - Each stage is built far from the room and switched on only while the puppet is there, with its course (checkpoints, falls) running.
+- **The puppet** starts gnome-sized (0.575 m) on its platform and can shrink to mouse size.
+- **The connection breaks when:**
+  - **Anything physically touches you.** While you're connected, your body stays in the chair, and its head and hands follow your real ones. Anything they touch, or anything that bumps into them, breaks the link. The view returns to the chair and the panel says so; press Take Control again. Things already touching when you connect (the finger on the button) don't count. The chair, the floor and the hologram never count.
+  - **You let go:** hold your right palm up with a pinch for 1 s (Escape at a desk).
+  - **You leave the chair.**
+
+  While nobody is connected, the puppet's strings hold where they are and it ignores flicks, turns and size gestures.
+- **Tested headless (6 tests):**
+  - The chair menu, sitting and standing.
+  - Teleport, refused while seated.
+  - Take Control needs the chair. The view lands 1.1 m behind the gnome at its scale, and comes back to the chair at full size.
+  - A bump breaks the link and it stays broken until Take Control is pressed again. A touch that was already there at connect is ignored.
+  - Beam to the Episode 1 stage lands the puppet 0.01 m from the start pad with the course running, and beaming home lands it back on the platform with the stage switched off.
+  - Flicks are ignored while disconnected.
+  - None of this has been tried in the headset yet.
+
 ## 9. Changing size: grow and shrink
 
 The puppet exists at two sizes for now: **mouse** (default, 12 cm, see 02_ScaleStudy.md) and **gnome** (57.5 cm). More sizes can be added to the `SizeChanger.sizes` list.

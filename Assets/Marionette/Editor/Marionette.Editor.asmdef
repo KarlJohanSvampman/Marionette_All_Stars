@@ -1,0 +1,21 @@
+{
+    "name": "Marionette.Editor",
+    "rootNamespace": "Marionette.Editor",
+    "references": [
+        "Marionette",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.OpenXR",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

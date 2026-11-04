@@ -1,0 +1,18 @@
+{
+    "name": "Marionette",
+    "rootNamespace": "Marionette",
+    "references": [
+        "Unity.InputSystem",
+        "Unity.XR.Hands",
+        "Unity.XR.CoreUtils"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

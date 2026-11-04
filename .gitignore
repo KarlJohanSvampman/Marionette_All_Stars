@@ -37,3 +37,19 @@ sysinfo.txt
 crashlytics-buildid.txt
 .DS_Store
 Thumbs.db
+
+# 3D models stay local: never committed (they may come from AI generators or stores)
+/Assets/Marionette/Models/
+/Assets/Marionette/Models.meta
+*.glb
+*.glb.meta
+*.gltf
+*.gltf.meta
+*.fbx
+*.fbx.meta
+*.FBX
+*.FBX.meta
+*.obj
+*.obj.meta
+*.blend
+*.blend.meta

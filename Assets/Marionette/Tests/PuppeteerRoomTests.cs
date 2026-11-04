@@ -263,6 +263,32 @@ namespace Marionette.Tests
             Assert.IsFalse(s.flick.Playing, "not connected: a flick does nothing");
         }
 
+        [UnityTest]
+        public IEnumerator AModelReplacesTheStandInFigure()
+        {
+            var s = Build();
+            var avatar = s.room.GetComponentInChildren<PuppeteerAvatar>();
+            // A stand-in "model": a 2 m tall box whose origin is in its middle.
+            var model = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            model.name = "TestModel";
+            model.transform.localScale = new Vector3(0.5f, 2f, 0.3f);
+            model.SetActive(false);
+            avatar.model = model;
+            avatar.modelHeight = 1.75f;
+            model.SetActive(true);
+            yield return null;
+            yield return null;
+            Assert.IsNotNull(avatar.ModelInstance, "the model is used");
+            var r = avatar.ModelInstance.GetComponent<Renderer>();
+            Debug.Log($"[Room] model: {r.bounds.size.y:0.00} m tall, feet at {r.bounds.min.y:0.000} m");
+            Assert.AreEqual(1.75f, r.bounds.size.y, 0.01f, "scaled to the puppeteer's height");
+            Assert.AreEqual(0f, r.bounds.min.y, 0.02f, "feet on the floor");
+            Assert.IsNull(avatar.ModelInstance.GetComponent<Collider>(), "no colliders: it mustn't trip its own contact sensors");
+            foreach (Transform child in avatar.standing)
+                if (child.name != "Model") Assert.IsFalse(child.gameObject.activeSelf, $"stand-in part {child.name} hidden");
+            model.SetActive(false);
+        }
+
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
     }
 }

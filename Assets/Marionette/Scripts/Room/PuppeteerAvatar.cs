@@ -21,6 +21,21 @@ namespace Marionette.Room
         public Transform standing, sitting;
         public ContactSensor head, leftHand, rightHand;
 
+        [Header("Model (optional, kept local: never committed)")]
+        [Tooltip("A character model for the standing puppeteer. Empty: loads Resources/<modelResource> if there is one " +
+                 "(e.g. Assets/Marionette/Models/Resources/PuppeteerModel.glb or .fbx), otherwise the stand-in figure is used.")]
+        public GameObject model;
+        public string modelResource = "PuppeteerModel";
+        [Tooltip("Height the model is scaled to, metres.")]
+        public float modelHeight = 1.75f;
+        [Tooltip("Turn the model about the vertical so it faces forward, degrees. Flip by 180 if it faces backwards.")]
+        public float modelYaw = -90f;
+        [Tooltip("The body sits this far behind the eyes, metres, so looking down shows your chest instead of the inside of your head.")]
+        public float bodyBehindEyes = 0.2f;
+
+        /// <summary>The model in use, if any.</summary>
+        public GameObject ModelInstance { get; private set; }
+
         // Tracked pose when the link was made, and where the head sat in the room then.
         Vector3 m_TrackHead;
         Quaternion m_Remap = Quaternion.identity;
@@ -30,6 +45,35 @@ namespace Marionette.Room
         {
             if (room != null && room.link != null) room.link.Changed += OnLinkChanged;
             SetSensors(false);
+            UseModel();
+        }
+
+        /// <summary>
+        /// Put the character model in place of the standing stand-in, scaled to modelHeight with its feet on the
+        /// floor. Until the model is rigged (Mixamo) it can't sit, so the seated stand-in stays.
+        /// </summary>
+        void UseModel()
+        {
+            var source = model != null ? model : (string.IsNullOrEmpty(modelResource) ? null : Resources.Load<GameObject>(modelResource));
+            if (source == null || standing == null) return;
+            var holder = new GameObject("Model").transform;
+            holder.SetParent(standing, false);
+            holder.localRotation = Quaternion.Euler(0f, modelYaw, 0f);
+            var instance = Instantiate(source, holder, false);
+            instance.name = source.name;
+            foreach (var c in instance.GetComponentsInChildren<Collider>()) Destroy(c);
+            var renderers = instance.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) { Destroy(holder.gameObject); return; }
+            Bounds b = renderers[0].bounds;
+            foreach (var r in renderers) b.Encapsulate(r.bounds);
+            // Feet on the floor, centred under the body (measured before scaling), then scaled to height.
+            Vector3 feet = holder.InverseTransformPoint(new Vector3(b.center.x, b.min.y, b.center.z));
+            instance.transform.localPosition -= feet;
+            float k = b.size.y > 1e-4f ? modelHeight / b.size.y : 1f;
+            holder.localScale = Vector3.one * k;
+            foreach (Transform child in standing)
+                if (child != holder) child.gameObject.SetActive(false);
+            ModelInstance = instance;
         }
 
         void OnLinkChanged(bool connected, string reason)
@@ -86,8 +130,9 @@ namespace Marionette.Room
                 // Stand under the head, facing where you look.
                 float floorY = room.floor != null ? room.floor.Snap(cam.position).y : 0f;
                 Vector3 fwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up);
-                transform.position = new Vector3(cam.position.x, floorY, cam.position.z);
                 if (fwd.sqrMagnitude > 1e-6f) transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
+                Vector3 back = ModelInstance != null && fwd.sqrMagnitude > 1e-6f ? -fwd.normalized * bodyBehindEyes : Vector3.zero;
+                transform.position = new Vector3(cam.position.x, floorY, cam.position.z) + back;
             }
             if (head != null) head.transform.position = cam.position;
         }

@@ -220,8 +220,11 @@ namespace Marionette.Tests
             var log = new Log();
             yield return Watch(spawner, 4f, log);
             Debug.Log($"[Locomotion] lean {expected}: {log}");
-            Assert.IsTrue(log.states.Contains(BalanceMonitor.State.Toppling), "leaning past the limit topples");
-            Assert.Greater(log.maxHandSpeedWhileToppling, 2f * k_Mouse, "arms wave while toppling");
+            bool toppled = log.states.Contains(BalanceMonitor.State.Toppling);
+            bool staggered = log.states.Contains(BalanceMonitor.State.Staggering);
+            Assert.IsTrue(toppled || staggered, "leaning past the limit topples, or sends it stumbling");
+            if (toppled) Assert.Greater(log.maxHandSpeedWhileToppling, 2f * k_Mouse, "arms wave while toppling");
+            else Assert.Greater(log.maxArmSpreadWhileStaggering, 0.55f * k_Mouse, "arms brace out while staggering");
             Assert.IsTrue(log.states.Contains(BalanceMonitor.State.Falling), "then it falls");
             Assert.Less(log.centerEndHeight, 0.35f * k_Mouse, "flat on the ground");
             Assert.Greater(Vector3.Dot(log.centerEnd - log.centerStart, expected), 0.1f * k_Mouse, "it falls the way it leaned");

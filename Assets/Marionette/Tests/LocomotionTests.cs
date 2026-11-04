@@ -40,6 +40,7 @@ namespace Marionette.Tests
             spawner.input = input;
             spawner.startHeight = k_Mouse;
             var flick = go.AddComponent<StringFlick>();
+            go.AddComponent<PartPlacer>();
             go.SetActive(true);
             return (spawner, input, flick);
         }
@@ -216,7 +217,7 @@ namespace Marionette.Tests
             Vector3 expected = direction switch { 0 => Vector3.forward, 1 => Vector3.back, _ => Vector3.right };
             if (direction == 0) input.rightTilt = new Vector3(45f, 0f, 0f);
             else if (direction == 1) input.rightTilt = new Vector3(-45f, 0f, 0f);
-            else input.leftTilt = new Vector3(0f, 0f, -45f);
+            else input.leftTilt = new Vector3(0f, 0f, -60f); // sideways is calmer: it takes a bigger roll
             var log = new Log();
             yield return Watch(spawner, 4f, log);
             Debug.Log($"[Locomotion] lean {expected}: {log}");
@@ -254,6 +255,96 @@ namespace Marionette.Tests
             Assert.Greater(l.x, 0.2f, "left palm: sideways");
             Assert.AreEqual(0f, r.x, 1e-4f, "right palm: no sideways");
             Assert.Greater(r.z, 0.1f, "right palm: fingers down leans forward");
+        }
+
+        /// <summary>Hold a part and keep pointing at goal for seconds, then let go.</summary>
+        static IEnumerator HoldAt(StringFlick flick, PuppetNodeId part, System.Func<Vector3> goal, float seconds)
+        {
+            Assert.IsTrue(flick.BeginHold(part), "take hold");
+            float end = Time.time + seconds;
+            while (Time.time < end && flick.Holding)
+            {
+                flick.SetHoldGoal(goal());
+                yield return new WaitForFixedUpdate();
+            }
+            flick.EndHold();
+        }
+
+        [UnityTest]
+        public IEnumerator PointingPlacesAFootWhereYouPoint()
+        {
+            var (spawner, _, flick) = MakePuppet();
+            yield return Wait(1.5f);
+            var foot = spawner.rig.Node(PuppetNodeId.LeftFoot).Body;
+            float lift = foot.GetComponent<Collider>().bounds.extents.y;
+            Vector3 target = new Vector3(foot.position.x, lift, foot.position.z + 0.3f * k_Mouse);
+            var log = new Log();
+            var watch = Watch(spawner, 3.5f, log);
+            yield return HoldAt(flick, PuppetNodeId.LeftFoot, () => target, 1.2f);
+            float off = Vector3.Distance(new Vector3(foot.position.x, 0f, foot.position.z), new Vector3(target.x, 0f, target.z)) / k_Mouse;
+            yield return watch;
+            Debug.Log($"[Locomotion] placed foot: {off:0.00} H from where it was pointed; {log}");
+            Assert.Less(off, 0.08f, "the foot lands where it was pointed");
+            Assert.IsFalse(LostIt(log), "a small placed step doesn't lose balance");
+        }
+
+        [UnityTest]
+        public IEnumerator AHeldHandStaysWithinReach()
+        {
+            var (spawner, _, flick) = MakePuppet();
+            yield return Wait(1.5f);
+            var rig = spawner.rig;
+            TextileLink arm = null;
+            foreach (var link in rig.textile) if (link.to.id == PuppetNodeId.RightHand) arm = link;
+            Vector3 shoulder = arm.fromPoint.transform.position;
+            float stretch = 0f;
+            Assert.IsTrue(flick.BeginHold(PuppetNodeId.RightHand));
+            float end = Time.time + 1.5f;
+            while (Time.time < end)
+            {
+                flick.SetHoldGoal(shoulder + new Vector3(0.6f, 0.1f, 0.4f) * k_Mouse); // a little beyond reach
+                stretch = Mathf.Max(stretch, Vector3.Distance(arm.fromPoint.transform.position, arm.toPoint.transform.position) / arm.restLength);
+                yield return new WaitForFixedUpdate();
+            }
+            Debug.Log($"[Locomotion] held hand: arm stretched to {stretch:0.00}x, overreach {flick.Overreach / k_Mouse:0.00} H");
+            flick.EndHold();
+            Assert.Less(stretch, 1.3f, "the arm doesn't stretch past its reach");
+        }
+
+        [UnityTest]
+        public IEnumerator OverreachingPullsItOver()
+        {
+            var (spawner, _, flick) = MakePuppet();
+            yield return Wait(1.5f);
+            var hand = spawner.rig.Node(PuppetNodeId.RightHand).Body;
+            Vector3 far = hand.position + Vector3.forward * (3f * k_Mouse);
+            var log = new Log();
+            var watch = Watch(spawner, 3f, log);
+            yield return HoldAt(flick, PuppetNodeId.RightHand, () => far, 2.5f);
+            yield return watch;
+            Debug.Log($"[Locomotion] overreach: {log}");
+            Assert.IsTrue(LostIt(log), "reaching far past the arm's length pulls it over");
+            Assert.Greater((log.centerEnd - log.centerStart).z, 0f, "toward where it reached");
+        }
+
+        [UnityTest]
+        public IEnumerator PointingAtTheFloorRestsThePartOnIt()
+        {
+            var (spawner, _, flick) = MakePuppet();
+            yield return Wait(1.5f);
+            var placer = flick.GetComponent<PartPlacer>();
+            Assert.IsTrue(flick.BeginHold(PuppetNodeId.RightFoot));
+            var foot = spawner.rig.Node(PuppetNodeId.RightFoot).Body;
+            float lift = foot.GetComponent<Collider>().bounds.extents.y;
+            Vector3 spot = new Vector3(0.1f, 0f, 0.2f);
+            var ray = new Ray(spot + new Vector3(0f, 0.5f, -0.3f), (spot - (spot + new Vector3(0f, 0.5f, -0.3f))).normalized);
+            Vector3 goal = placer.GoalFor(spawner.rig, ray);
+            flick.EndHold();
+            Assert.AreEqual(spot.x, goal.x, 1e-3f);
+            Assert.AreEqual(spot.z, goal.z, 0.002f);
+            Assert.AreEqual(lift, goal.y, 0.002f, "the foot rests on the floor where the ray hits");
+            Assert.IsTrue(placer.PartUnder(spawner.rig, new Ray(foot.position + Vector3.up * 0.2f, Vector3.down), out var part) && part == PuppetNodeId.RightFoot,
+                "pointing straight at a foot finds it, to pick it up with the right hand");
         }
 
         [UnityTest]

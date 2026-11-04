@@ -48,7 +48,13 @@ namespace Marionette
         [Range(1f, 40f)] public float unstableLean = 8f;
         [Tooltip("Degrees of lean the ankles aim for per degree of left-palm tilt. Gravity adds to it, so the body ends up " +
                  "leaning more than this (about 1.7x with the default ankles).")]
-        [Range(0f, 3f)] public float leanControl = 0.6f;
+        [Range(0f, 3f)] public float leanControl = 0.5f;
+        [Tooltip("Sideways (left palm roll): degrees of lean per degree of roll. Lower than forward/back: sideways falls come easily.")]
+        [Range(0f, 3f)] public float sideLeanControl = 0.35f;
+        [Tooltip("Degrees of palm pitch (forward/back) ignored before the body leans, so only a deliberate tilt counts.")]
+        [Range(0f, 30f)] public float foreLeanDeadZone = 6f;
+        [Tooltip("Degrees of palm roll (sideways) ignored before the body leans.")]
+        [Range(0f, 30f)] public float sideLeanDeadZone = 12f;
         [Tooltip("Most lean the left palm can ask for, degrees.")]
         [Range(0f, 60f)] public float maxLeanControl = 20f;
 
@@ -302,8 +308,8 @@ namespace Marionette
             Vector3 uL = m_Rig.leftCross.Tilt * Vector3.up, uR = m_Rig.rightCross.Tilt * Vector3.up;
             float side = Mathf.Atan2(Vector3.Dot(uL, right), Mathf.Max(0.05f, uL.y)) * Mathf.Rad2Deg;
             float fore = Mathf.Atan2(Vector3.Dot(uR, fwd), Mathf.Max(0.05f, uR.y)) * Mathf.Rad2Deg;
-            side = Mathf.Clamp(side * leanControl, -maxLeanControl, maxLeanControl);
-            fore = Mathf.Clamp(fore * leanControl, -maxLeanControl, maxLeanControl);
+            side = Mathf.Clamp(DeadZone(side, sideLeanDeadZone) * sideLeanControl, -maxLeanControl, maxLeanControl);
+            fore = Mathf.Clamp(DeadZone(fore, foreLeanDeadZone) * leanControl, -maxLeanControl, maxLeanControl);
             if (Mathf.Abs(side) < 0.01f && Mathf.Abs(fore) < 0.01f) return;
             Vector3 up = Vector3.up + right * Mathf.Tan(side * Mathf.Deg2Rad) + fwd * Mathf.Tan(fore * Mathf.Deg2Rad);
             float angle = Mathf.Min(Vector3.Angle(Vector3.up, up), maxLeanControl);
@@ -311,6 +317,8 @@ namespace Marionette
             if (axis.sqrMagnitude < 1e-10f) return;
             LeanTarget = Quaternion.AngleAxis(angle, axis.normalized);
         }
+
+        static float DeadZone(float degrees, float zone) => Mathf.Sign(degrees) * Mathf.Max(0f, Mathf.Abs(degrees) - zone);
 
         /// <summary>String tops glide after the body, horizontally.</summary>
         void FollowWithStrings(float dt)

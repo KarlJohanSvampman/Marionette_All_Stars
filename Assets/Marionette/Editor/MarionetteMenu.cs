@@ -137,6 +137,9 @@ namespace Marionette.Editor
             return mat;
         }
 
+        [MenuItem("Marionette/Hand Tracking/Controls - Point and Place (default)")]
+        static void UsePointPlace() => SetFingerAction(XRHandsControlInput.FingerAction.PointPlace);
+
         [MenuItem("Marionette/Hand Tracking/Controls - Pinch and Flick")]
         static void UsePinchFlick() => SetFingerAction(XRHandsControlInput.FingerAction.PinchFlick);
 
@@ -151,6 +154,8 @@ namespace Marionette.Editor
                 hands.fingerAction = action;
                 if (hands.GetComponent<StringFlick>() == null && hands.GetComponent<PuppetSpawner>() != null)
                     Undo.AddComponent<StringFlick>(hands.gameObject);
+                if (hands.GetComponent<PartPlacer>() == null && hands.GetComponent<StringFlick>() != null)
+                    Undo.AddComponent<PartPlacer>(hands.gameObject);
                 EditorSceneManager.MarkSceneDirty(hands.gameObject.scene);
             }
             Debug.Log($"[Marionette] Hand controls: {action}. Save the scene to keep it.");
@@ -202,6 +207,8 @@ namespace Marionette.Editor
             if (origin != null) go.AddComponent<PuppetFollowView>().origin = origin;
             // Pinch & flick: applies recorded right-index flicks to the pinched string.
             go.AddComponent<StringFlick>();
+            // Point & place: hold a part (left pinch on its string, or right-hand ray + pinch) and point where it goes.
+            go.AddComponent<PartPlacer>();
 
             var cam = Camera.main;
             if (cam != null)

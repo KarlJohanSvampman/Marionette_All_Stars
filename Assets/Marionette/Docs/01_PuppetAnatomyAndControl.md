@@ -92,7 +92,24 @@ This replaces the six-string rig in sections 2-3: **only the hands and feet have
 
 **Palm tilt (all schemes) = upper-body lean.** The left palm's **roll** leans the puppet sideways. The right palm's **pitch** leans it forward and back: fingers pointing down = forward. Each hand passes on only its own axis, measured against the calibrated flat hand and the player's facing. Each cross also tilts with its palm. The first 4° are ignored (`tiltDeadZone`), and `tiltGain` sets the response. See 8a for how lean is held and lost.
 
-**Pinch & Flick** (`XRHandsControlInput.fingerAction = PinchFlick`) replaces finger lifting:
+**Point & Place** (`fingerAction = PointPlace`, the default; `PartPlacer`): move hands and feet live, by pointing.
+- **Take hold of a part:**
+  - pinch its string with the left hand (index / middle / ring / little = left hand / right hand / left foot / right foot), or
+  - point the right hand's ray straight at a hand or foot and pinch.
+- **While it's held,** it follows where the right hand points, along a yellow ray:
+  - onto the surface the ray hits (a foot lands there, a hand rests there), or
+  - pointing at nothing, along the ray at the distance it was picked up.
+- **Let go** to set it down: a foot stays where it was put and the body follows it over; a hand swings back to its place.
+- **Limits:** the part moves at most `placeSpeed` (2.5 H/s) and never further than 1.15× the arm or leg from its shoulder or hip. Pointing beyond that pulls the body toward the spot (`overreachPull`), so overreaching tips it over.
+- Both crosses hold still while a part is held. No drag pulse, no delay.
+- **Tested:** a placed foot 0.3 H ahead lands within 0.04 H of the spot, with the body at 5° of lean and no step. A held hand stops at 1.18× the arm's length. Pointing 3 H away pulls the puppet over toward it.
+
+**Lean is calmer:**
+- Forward/back (right palm pitch) ignores the first 6° of tilt, then leans 0.5° per degree.
+- Sideways (left palm roll) ignores the first 12°, then leans 0.35° per degree, since sideways falls came too easily.
+- Settings on `BalanceMonitor`: `foreLeanDeadZone`, `sideLeanDeadZone`, `leanControl`, `sideLeanControl`.
+
+**Pinch & Flick** (`fingerAction = PinchFlick`, the earlier scheme, still available) replaces finger lifting:
 
 | Left hand pinch (thumb to...) | String |
 |---|---|

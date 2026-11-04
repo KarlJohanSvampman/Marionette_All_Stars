@@ -34,8 +34,8 @@ namespace Marionette
     public class XRHandsControlInput : ControlInputSource
     {
         public enum Finger { Thumb, Index, Middle, Ring, Little }
-        public enum FingerAction { Lift, Press, PinchFlick }
-        public enum TakePhase { Idle, Recording, Full, Expired }
+        public enum FingerAction { Lift, Press, PinchFlick, PointPlace }
+        public enum TakePhase { Idle, Recording, Full, Expired, Holding }
 
         /// <summary>One recorded flick: which body part, and the right index path in world metres.</summary>
         public struct FlickTake
@@ -48,6 +48,17 @@ namespace Marionette
         /// <summary>Fired when the left pinch is released after a valid take.</summary>
         public event System.Action<FlickTake> FlickReleased;
 
+        // ---- Point & place (PartPlacer) ----
+        /// <summary>The part held by the left pinch (PointPlace), while the pinch lasts.</summary>
+        public PuppetNodeId? HeldTarget => fingerAction == FingerAction.PointPlace && m_Phase == TakePhase.Holding ? TargetFor(m_SelectMask) : null;
+        /// <summary>Right hand's pointing ray, world space: from an estimated shoulder out through the pinch point.</summary>
+        public Ray RightAim { get; private set; }
+        public bool RightAimValid { get; private set; }
+        /// <summary>Right thumb and index pinched together.</summary>
+        public bool RightPinching { get; private set; }
+        /// <summary>Set by PartPlacer while the right hand holds a part directly: both crosses hold still.</summary>
+        [System.NonSerialized] public bool externalFreeze;
+
         [Tooltip("XR Origin's Camera Floor Offset. Hand poses are converted from this space to world.")]
         public Transform trackingSpace;
 
@@ -58,7 +69,7 @@ namespace Marionette
 
         [Tooltip("Lift = raise a finger to lift its string. Press = push a finger down to pull it. " +
                  "PinchFlick = pinch left fingers to pick a string, draw with the right index, release to apply.")]
-        public FingerAction fingerAction = FingerAction.PinchFlick;
+        public FingerAction fingerAction = FingerAction.PointPlace;
 
         [Header("Palm tilt (all modes)")]
         [Tooltip("Tilting the palm tilts the cross.")]
@@ -212,6 +223,8 @@ namespace Marionette
             if (!hand.isTracked || !hand.GetJoint(XRHandJointID.Palm).TryGetPose(out Pose palm))
             {
                 state.wasTracked = false;
+                if (side == ControlSide.Right) { RightAimValid = false; RightPinching = false; }
+                if (side == ControlSide.Left && m_Phase == TakePhase.Holding) m_Phase = TakePhase.Idle; // lost the pinching hand: set it down
                 // Left hand lost mid-take: don't leave the crosses frozen for ever.
                 if (side == ControlSide.Left && m_Phase != TakePhase.Idle && TakeAge > recordSeconds + expireSeconds)
                 {
@@ -267,8 +280,11 @@ namespace Marionette
 
             if (fingerAction == FingerAction.PinchFlick && side == ControlSide.Left)
                 UpdateTake(hand);
+            if (fingerAction == FingerAction.PointPlace && side == ControlSide.Left)
+                UpdateHold(hand);
+            if (side == ControlSide.Right) UpdateRightAim(hand);
 
-            bool frozen = fingerAction == FingerAction.PinchFlick && m_Phase != TakePhase.Idle;
+            bool frozen = ((fingerAction is FingerAction.PinchFlick or FingerAction.PointPlace) && m_Phase != TakePhase.Idle) || externalFreeze;
             if (frozen && !state.frozen)
             {
                 state.frozen = true;
@@ -308,7 +324,7 @@ namespace Marionette
             Finger[] map = side == ControlSide.Left ? leftFingers : rightFingers;
             for (int i = 0; i < input.Channels.Length && i < map.Length; i++)
             {
-                if (state.fist || fingerAction == FingerAction.PinchFlick) { input.Channels[i] = 0f; continue; }
+                if (state.fist || fingerAction is FingerAction.PinchFlick or FingerAction.PointPlace) { input.Channels[i] = 0f; continue; }
                 int f = (int)map[i];
                 if (fingerAction == FingerAction.Lift)
                 {
@@ -325,6 +341,52 @@ namespace Marionette
         }
 
         /// <summary>Pinch & flick: start, select, record, then fire or cancel on release. Called once per step.</summary>
+        /// <summary>Point & place: the left pinch holds a string's part for as long as it lasts (no recording).</summary>
+        void UpdateHold(XRHand left)
+        {
+            int touching = 0, holding = 0;
+            if (left.GetJoint(XRHandJointID.ThumbTip).TryGetPose(out Pose thumb))
+            {
+                for (int f = 1; f < 5; f++)
+                {
+                    if (!left.GetJoint(k_Tips[f]).TryGetPose(out Pose tip)) continue;
+                    float d = Vector3.Distance(thumb.position, tip.position);
+                    if (d < pinchStart) touching |= 1 << (f - 1);
+                    if (d < pinchRelease) holding |= 1 << (f - 1);
+                }
+            }
+            if (m_Phase == TakePhase.Idle)
+            {
+                if (touching == 0 || m_Left.fist) return;
+                m_Phase = TakePhase.Holding;
+                m_TakeStart = Time.time;
+                m_SelectMask = touching;
+                return;
+            }
+            if (Time.time - m_TakeStart < selectSeconds) m_SelectMask |= touching;
+            if ((holding & m_SelectMask) == 0) m_Phase = TakePhase.Idle; // let go: the part is set down
+        }
+
+        /// <summary>The right hand's pointing ray and pinch, for placing parts.</summary>
+        void UpdateRightAim(XRHand right)
+        {
+            RightAimValid = false;
+            if (!right.GetJoint(XRHandJointID.ThumbTip).TryGetPose(out Pose thumb) ||
+                !right.GetJoint(XRHandJointID.IndexTip).TryGetPose(out Pose index)) { RightPinching = false; return; }
+            float gap = Vector3.Distance(thumb.position, index.position);
+            RightPinching = RightPinching ? gap < pinchRelease : gap < pinchStart;
+            Vector3 pinch = trackingSpace != null ? trackingSpace.TransformPoint((thumb.position + index.position) * 0.5f) : (thumb.position + index.position) * 0.5f;
+            var cam = Camera.main;
+            float scale = trackingSpace != null ? trackingSpace.lossyScale.x : 1f;
+            Vector3 head = cam != null ? cam.transform.position : pinch - Vector3.forward * 0.4f * scale;
+            Vector3 fwd = cam != null ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized : Vector3.forward;
+            Vector3 shoulder = head + (Vector3.down * 0.18f + Vector3.Cross(Vector3.up, fwd) * 0.17f) * scale;
+            Vector3 dir = pinch - shoulder;
+            if (dir.sqrMagnitude < 1e-10f) return;
+            RightAim = new Ray(pinch, dir.normalized);
+            RightAimValid = true;
+        }
+
         void UpdateTake(XRHand left)
         {
             int touching = 0, holding = 0;

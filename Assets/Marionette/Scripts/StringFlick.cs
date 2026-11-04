@@ -63,6 +63,13 @@ namespace Marionette
         [Tooltip("The string carries the part's weight during the flick. Without it, ground friction pins a small puppet's feet.")]
         public bool carryWeight = true;
 
+        [Header("Point & place (live hold)")]
+        [Tooltip("Fastest a held part moves toward where you point, puppet heights per second.")]
+        public float placeSpeed = 2.5f;
+        [Tooltip("Pointing further than the limb reaches pulls the body that way: this many puppet heights per second squared " +
+                 "per puppet height of overreach. Overreach far enough and it tips over.")]
+        public float overreachPull = 25f;
+
         [Header("Feedback")]
         public Color recordingColor = new Color(0.4f, 1f, 0.5f);
         public Color fullColor = new Color(0.6f, 0.6f, 0.6f);
@@ -117,6 +124,15 @@ namespace Marionette
             m_Trail.enabled = false;
             var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
             if (shader != null) m_Trail.sharedMaterial = new Material(shader);
+        }
+
+        // Switched off (the puppeteer disconnected): let go of anything held and put the limbs back.
+        void OnDisable()
+        {
+            if (m_Holding) EndHold();
+            m_Active = false;
+            RestoreNow();
+            RestoreTrailing();
         }
 
         void OnDestroy()
@@ -281,6 +297,7 @@ namespace Marionette
             UpdateTrailing();
             if (m_Reattach >= 0f) Reattach();
             ApplyPulses();
+            if (m_Holding) { HoldStep(); return; }
             if (!m_Active) return;
             if (m_Clock < 0f)
             {
@@ -487,6 +504,85 @@ namespace Marionette
             m_Reattach = -1f;
         }
 
+        // ---------- Point & place: the held part follows where you point, live ----------
+
+        bool m_Holding;
+        Vector3 m_HoldGoal, m_HoldSmoothed;
+
+        public bool Holding => m_Holding;
+        public PuppetNodeId HeldPart => m_Target;
+        /// <summary>Where the held part is heading (after the speed limit, before the reach limit).</summary>
+        public Vector3 HoldGoal => m_HoldSmoothed;
+        /// <summary>How far, metres, the last goal was beyond the limb's reach.</summary>
+        public float Overreach { get; private set; }
+
+        /// <summary>Take hold of a part: it lets go of the body and follows SetHoldGoal until EndHold.</summary>
+        public bool BeginHold(PuppetNodeId part)
+        {
+            var rig = m_Spawner.rig;
+            var balance = rig != null ? rig.GetComponent<BalanceMonitor>() : null;
+            if (!isActiveAndEnabled || rig == null || (balance != null && balance.ControlsOverridden)) return false;
+            if (m_Active) Stop();
+            RestoreNow();
+            m_Pulses.Clear();
+            m_Target = part;
+            Loosen(rig);
+            m_HoldGoal = m_HoldSmoothed = rig.Node(part).Body.worldCenterOfMass;
+            m_Holding = true;
+            return true;
+        }
+
+        public void SetHoldGoal(Vector3 goal) => m_HoldGoal = goal;
+
+        /// <summary>Let go: the part stays where it was put (a foot), or goes back to its place (a hand).</summary>
+        public void EndHold()
+        {
+            if (!m_Holding) return;
+            m_Holding = false;
+            Overreach = 0f;
+            if (m_LimbJoint != null)
+            {
+                m_Reattach = 0f;
+                m_ReleaseAnchor = CurrentAnchor(m_LimbJoint) + (KeepsSupport ? m_SupportOffset : Vector3.zero);
+                if (!IsHand) m_LimbJoint.connectedAnchor = m_ReleaseAnchor;
+            }
+        }
+
+        void HoldStep()
+        {
+            var rig = m_Spawner.rig;
+            var balance = rig != null ? rig.GetComponent<BalanceMonitor>() : null;
+            if (rig == null || (balance != null && balance.ControlsOverridden)) { EndHold(); return; }
+            float dt = Time.fixedDeltaTime, h = rig.height;
+            Rigidbody body = rig.Node(m_Target).Body;
+            Vector3 point = body.worldCenterOfMass;
+            ApplySupport();
+
+            m_HoldSmoothed = Vector3.MoveTowards(m_HoldSmoothed, m_HoldGoal, placeSpeed * h * dt);
+            Vector3 goal = m_HoldSmoothed, goalVelocity = Vector3.zero, wanted = goal;
+            ClampToReach(point, ref goal, ref goalVelocity);
+            // Overreach: the body is pulled toward where you're pointing.
+            Vector3 over = wanted - goal;
+            Overreach = over.magnitude;
+            if (Overreach > 1e-4f)
+            {
+                Vector3 pull = Vector3.ProjectOnPlane(over, Vector3.up);
+                var torso = rig.Node(PuppetNodeId.Center).Body;
+                torso.AddForce(Vector3.ClampMagnitude(pull, h) * overreachPull, ForceMode.Acceleration);
+            }
+
+            float omega = 2f * Mathf.PI * response;
+            Vector3 accel = (goal - point) * (omega * omega) + (goalVelocity - body.linearVelocity) * (2f * omega);
+            accel = Vector3.ClampMagnitude(accel, maxAcceleration * h);
+            Vector3 force = accel * body.mass;
+            if (carryWeight)
+            {
+                var tuning = rig.GetComponent<MarionetteTuning>();
+                force -= Physics.gravity * ((tuning != null ? tuning.gravityScale : 1f) * body.mass);
+            }
+            body.AddForceAtPosition(force, point, ForceMode.Force);
+        }
+
         void Stop()
         {
             if (m_LimbJoint != null)
@@ -514,7 +610,7 @@ namespace Marionette
         {
             var rig = m_Spawner.rig;
             PuppetNodeId? selected = m_Hands != null ? m_Hands.SelectedTarget : null;
-            if (Playing) selected = m_Target;
+            if (Playing || m_Holding) selected = m_Target;
 
             if (rig != null)
                 foreach (var cross in new[] { rig.leftCross, rig.rightCross })

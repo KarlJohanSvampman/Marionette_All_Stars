@@ -58,6 +58,14 @@ namespace Marionette
         [Tooltip("Most lean the left palm can ask for, degrees.")]
         [Range(0f, 60f)] public float maxLeanControl = 20f;
 
+        public enum LeanSource { Auto, Palms, HandLine }
+        [Tooltip("Auto: the line between the hands when the input measures it (Point & Place), otherwise the palms.")]
+        public LeanSource leanSource = LeanSource.Auto;
+        [Tooltip("Degrees of hand-line slope ignored before the body leans.")]
+        [Range(0f, 30f)] public float handLineDeadZone = 8f;
+        [Tooltip("Degrees of lean per degree of hand-line slope past the dead zone.")]
+        [Range(0f, 2f)] public float handLineControl = 0.45f;
+
         [Header("Automatic steps (distances in puppet heights)")]
         [Tooltip("A step is taken once the capture point comes this close to the edge of the feet (negative = past it). " +
                  "Early, small steps keep it from getting going; late ones only come when it's already falling.")]
@@ -138,6 +146,19 @@ namespace Marionette
         public int StepsTaken => m_Steps != null ? m_Steps.StepCount : 0;
         public event Action<State> StateChanged;
 
+        bool m_Protected;
+        public bool Protected => m_Protected;
+
+        /// <summary>
+        /// While the player is choosing where a hand or foot goes, the puppet can't fall: it's held steady at the lean
+        /// it had, its drift is damped, and nothing trips or topples it. Balance matters again once the move is chosen.
+        /// </summary>
+        public void Protect(bool on)
+        {
+            if (on && ControlsOverridden) return; // already losing it: too late
+            m_Protected = on;
+        }
+
         /// <summary>Stop judging balance, e.g. while the puppet grows or shrinks.</summary>
         public void Pause(bool paused)
         {
@@ -180,6 +201,15 @@ namespace Marionette
             Measure();
             UpdateLeanTarget();
             FollowWithStrings(dt);
+
+            if (m_Protected && !ControlsOverridden)
+            {
+                HoldSteady();
+                m_AirTime = 0f;
+                m_QuickSteps = 0;
+                SetState(Lean > unstableLean ? State.Unstable : State.Stable);
+                return;
+            }
 
             switch (Current)
             {
@@ -300,8 +330,21 @@ namespace Marionette
         /// </summary>
         void UpdateLeanTarget()
         {
+            if (m_Protected) return; // selecting a target: the lean holds where it was
             LeanTarget = Quaternion.identity;
             if (ControlsOverridden || m_Rig.leftCross == null || m_Rig.rightCross == null) return;
+            var src = m_Rig.leftCross.input;
+            if (leanSource != LeanSource.Palms && src != null && src.ReadLean(out Quaternion line))
+            {
+                // The line between the hands: lean toward where it slopes down to, by how steeply.
+                Vector3 tilted = line * Vector3.up;
+                float slope = Vector3.Angle(Vector3.up, tilted);
+                float lean = Mathf.Min(DeadZone(slope, handLineDeadZone) * handLineControl, maxLeanControl);
+                Vector3 lineAxis = Vector3.Cross(Vector3.up, tilted);
+                if (lean > 0.01f && lineAxis.sqrMagnitude > 1e-10f) LeanTarget = Quaternion.AngleAxis(lean, lineAxis.normalized);
+                return;
+            }
+            if (leanSource == LeanSource.HandLine) return;
             Vector3 fwd = Flat(m_Rig.leftCross.neutral.forward);
             fwd = fwd.sqrMagnitude > 1e-6f ? fwd.normalized : Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, fwd);
@@ -361,6 +404,8 @@ namespace Marionette
             Vector3 capture = CapturePoint + reach;
             float dl = Flat(left.position - capture).magnitude, dr = Flat(right.position - capture).magnitude;
             leg = dl > dr ? 0 : 1; // the foot further from where the body is going
+            // A foot the player put down stays put: catch the balance with the other one if that's free.
+            if (m_Steps.IsPlanted(leg) && !m_Steps.IsPlanted(1 - leg)) leg = 1 - leg;
             // While the player is placing a foot, the other one is the one standing: no automatic steps.
             if (m_Steps.IsHeld(0) || m_Steps.IsHeld(1)) return false;
             var moving = leg == 0 ? left : right;
@@ -431,6 +476,28 @@ namespace Marionette
             m_StaggerLeft--;
             m_Steps.Begin(leg, target, stagger: true);
             m_LastStepTime = Time.time;
+        }
+
+        /// <summary>Selecting: right the body toward the lean it had and damp its drift, so it stands still.</summary>
+        void HoldSteady()
+        {
+            var center = m_Rig.Node(PuppetNodeId.Center).Body;
+            var head = m_Rig.Node(PuppetNodeId.Head).Body;
+            Vector3 want = LeanTarget * Vector3.up;
+            Quaternion.FromToRotation(center.rotation * Vector3.up, want).ToAngleAxis(out float angle, out Vector3 axis);
+            if (angle > 180f) angle -= 360f;
+            if (!float.IsNaN(axis.x) && axis.sqrMagnitude > 1e-8f)
+            {
+                float omega = 2f * Mathf.PI * 2f;
+                Vector3 spin = Vector3.ProjectOnPlane(center.angularVelocity, Vector3.up);
+                Vector3 accel = axis * (angle * Mathf.Deg2Rad * omega * omega) - spin * (2f * omega);
+                accel = Vector3.ClampMagnitude(accel, staggerUprightMax / Mathf.Sqrt(m_Rig.scale));
+                float inertia = center.inertiaTensor.magnitude + head.inertiaTensor.magnitude
+                                + head.mass * (head.worldCenterOfMass - center.worldCenterOfMass).sqrMagnitude;
+                center.AddTorque(accel * inertia, ForceMode.Force);
+            }
+            foreach (var rb in new[] { center, head })
+                rb.AddForce(-Flat(rb.linearVelocity) * 6f, ForceMode.Acceleration);
         }
 
         /// <summary>The body tries to right itself while it stumbles, with limited strength: a big enough shove still wins.</summary>

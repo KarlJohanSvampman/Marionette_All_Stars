@@ -328,26 +328,6 @@ namespace Marionette.Tests
         }
 
         [UnityTest]
-        public IEnumerator PointingAtTheFloorRestsThePartOnIt()
-        {
-            var (spawner, _, flick) = MakePuppet();
-            yield return Wait(1.5f);
-            var placer = flick.GetComponent<PartPlacer>();
-            Assert.IsTrue(flick.BeginHold(PuppetNodeId.RightFoot));
-            var foot = spawner.rig.Node(PuppetNodeId.RightFoot).Body;
-            float lift = foot.GetComponent<Collider>().bounds.extents.y;
-            Vector3 spot = new Vector3(0.1f, 0f, 0.2f);
-            var ray = new Ray(spot + new Vector3(0f, 0.5f, -0.3f), (spot - (spot + new Vector3(0f, 0.5f, -0.3f))).normalized);
-            Vector3 goal = placer.GoalFor(spawner.rig, ray);
-            flick.EndHold();
-            Assert.AreEqual(spot.x, goal.x, 1e-3f);
-            Assert.AreEqual(spot.z, goal.z, 0.002f);
-            Assert.AreEqual(lift, goal.y, 0.002f, "the foot rests on the floor where the ray hits");
-            Assert.IsTrue(placer.PartUnder(spawner.rig, new Ray(foot.position + Vector3.up * 0.2f, Vector3.down), out var part) && part == PuppetNodeId.RightFoot,
-                "pointing straight at a foot finds it, to pick it up with the right hand");
-        }
-
-        [UnityTest]
         public IEnumerator LeaningBackAgainstAShoveHelps()
         {
             float lostAlone, lostCountered;

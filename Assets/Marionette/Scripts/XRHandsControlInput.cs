@@ -120,6 +120,7 @@ namespace Marionette
 
         class HandState
         {
+            public Vector3 palmTrack; // filtered palm position, tracking space
             public bool tracked;
             public bool wasTracked;
             public Vector3 lastTranslation;
@@ -195,6 +196,44 @@ namespace Marionette
         public void Calibrate()
         {
             m_Left.calibrated = m_Right.calibrated = false;
+            m_LineNeutralSet = false; // the hands' line now becomes "level"
+        }
+
+        // ---- Lean from the line between the hands (Point & Place) ----
+        Quaternion m_LineLean = Quaternion.identity, m_LineNeutral = Quaternion.identity;
+        bool m_LineNeutralSet;
+
+        public override bool ReadLean(out Quaternion lean)
+        {
+            lean = m_LineLean;
+            if (fingerAction != FingerAction.PointPlace) return false;
+            bool frozen = m_Phase != TakePhase.Idle || externalFreeze; // choosing a target: hands are busy, lean holds
+            if (!frozen && m_Left.tracked && m_Right.tracked)
+            {
+                var tilt = HandLineTilt(m_Left.palmTrack, m_Right.palmTrack, trackingSpace != null ? trackingSpace.rotation : Quaternion.identity);
+                if (!m_LineNeutralSet) { m_LineNeutral = tilt; m_LineNeutralSet = true; }
+                m_LineLean = tilt * Quaternion.Inverse(m_LineNeutral);
+            }
+            lean = m_LineLean;
+            return true;
+        }
+
+        /// <summary>
+        /// The line between the hands as a tilt of "up" (world space): toward where the line slopes down to, by how
+        /// steeply. Right hand lower: toward the right. One hand in front of the other with the front one lower:
+        /// forward. Hands closer than 5 cm apart horizontally: no tilt (the slope is meaningless).
+        /// </summary>
+        public static Quaternion HandLineTilt(Vector3 leftPalm, Vector3 rightPalm, Quaternion space)
+        {
+            bool rightLower = rightPalm.y < leftPalm.y;
+            Vector3 down = rightLower ? rightPalm - leftPalm : leftPalm - rightPalm; // from the higher hand to the lower
+            Vector3 flat = new Vector3(down.x, 0f, down.z);
+            if (flat.magnitude < 0.05f) return Quaternion.identity;
+            float slope = Mathf.Atan2(-down.y, flat.magnitude) * Mathf.Rad2Deg;
+            Vector3 dir = space * flat.normalized;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 1e-8f) return Quaternion.identity;
+            return Quaternion.AngleAxis(slope, Vector3.Cross(Vector3.up, dir.normalized));
         }
 
         public override void ResetPose() => Calibrate();
@@ -240,6 +279,7 @@ namespace Marionette
             Vector3 rawPos = palm.position;
             if (!state.wasTracked) state.filter.Reset(rawPos);
             Vector3 palmPos = state.filter.Filter(rawPos, Time.deltaTime > 0f ? Time.deltaTime : Time.fixedDeltaTime, minCutoff, speedCoefficient);
+            state.palmTrack = palmPos;
             // Relative to the player too, so the follow view turning the player isn't read as a wrist twist.
             float yaw = YawOf(palm.rotation);
 
@@ -319,7 +359,9 @@ namespace Marionette
             input.Yaw = state.lastYaw;
             // Upper-body lean, split between the hands: the left palm's roll leans the puppet sideways,
             // the right palm's pitch leans it forward and back (fingers pointing down = forward).
-            input.Tilt = ToWorldTilt(KeepTiltAxis(state.lastTilt, sideways: side == ControlSide.Left));
+            // Point & place leans from the line between the hands (ReadLean); the crosses stay level.
+            input.Tilt = fingerAction == FingerAction.PointPlace ? Quaternion.identity
+                : ToWorldTilt(KeepTiltAxis(state.lastTilt, sideways: side == ControlSide.Left));
 
             Finger[] map = side == ControlSide.Left ? leftFingers : rightFingers;
             for (int i = 0; i < input.Channels.Length && i < map.Length; i++)

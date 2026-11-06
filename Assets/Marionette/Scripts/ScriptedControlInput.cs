@@ -16,6 +16,9 @@ namespace Marionette
         public float[] leftChannels = new float[3];
         public float[] rightChannels = new float[3];
         public SizeGesture sizeGesture;
+        [Tooltip("Lean from the line between the hands (degrees, world space: x = forward, z = sideways roll). Off: palm tilts.")]
+        public bool useHandLine;
+        public Vector3 handLineLean;
         [Tooltip("Act like hand tracking: reaching past the travel radius moves the player along.")]
         public bool supportsTravel;
 
@@ -49,6 +52,12 @@ namespace Marionette
         }
 
         public override SizeGesture ReadSizeGesture() => sizeGesture;
+
+        public override bool ReadLean(out Quaternion lean)
+        {
+            lean = Quaternion.Euler(handLineLean);
+            return useHandLine;
+        }
 
         public override bool SupportsTravel => supportsTravel;
 

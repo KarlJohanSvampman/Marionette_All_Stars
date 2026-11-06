@@ -92,22 +92,31 @@ This replaces the six-string rig in sections 2-3: **only the hands and feet have
 
 **Palm tilt (all schemes) = upper-body lean.** The left palm's **roll** leans the puppet sideways. The right palm's **pitch** leans it forward and back: fingers pointing down = forward. Each hand passes on only its own axis, measured against the calibrated flat hand and the player's facing. Each cross also tilts with its palm. The first 4° are ignored (`tiltDeadZone`), and `tiltGain` sets the response. See 8a for how lean is held and lost.
 
-**Point & Place** (`fingerAction = PointPlace`, the default; `PartPlacer`): move hands and feet live, by pointing.
-- **Take hold of a part:**
-  - pinch its string with the left hand (index / middle / ring / little = left hand / right hand / left foot / right foot), or
-  - point the right hand's ray straight at a hand or foot and pinch.
-- **While it's held,** it follows where the right hand points, along a yellow ray:
-  - onto the surface the ray hits (a foot lands there, a hand rests there), or
-  - pointing at nothing, along the ray at the distance it was picked up.
-- **Let go** to set it down: a foot stays where it was put and the body follows it over; a hand swings back to its place.
-- **Limits:** the part moves at most `placeSpeed` (2.5 H/s) and never further than 1.15× the arm or leg from its shoulder or hip. Pointing beyond that pulls the body toward the spot (`overreachPull`), so overreaching tips it over.
-- Both crosses hold still while a part is held. No drag pulse, no delay.
-- **Tested:** a placed foot 0.3 H ahead lands within 0.04 H of the spot, with the body at 5° of lean and no step. A held hand stops at 1.18× the arm's length. Pointing 3 H away pulls the puppet over toward it.
+**Point & Place** (`fingerAction = PointPlace`, the default; `PartPlacer`): choose where a hand or foot goes, then the puppet tries to get there.
+1. **Select:** pinch a string with the left hand (index / middle / ring / little = left hand / right hand / left foot / right foot) and keep pinching.
+   - A pointer comes from the right hand.
+   - Where it hits a surface within range, a marker appears (feet only on floors and steps; hands on anything).
+   - A see-through ghost of the puppet shows roughly the stance it would end up in. The body in the ghost shifts half a foot's step, or as far as a hand overreaches.
+   - Colours: green = within reach; amber = beyond a comfortable reach, so it will pull the body over; red pointer and no marker = out of range.
+   - **While selecting, the puppet can't fall** (`BalanceMonitor.Protect`): it's held steady at its lean, drift is damped, nothing trips or topples it, and the hands' lean is ignored.
+2. **Commit:** pinch with the right hand. The ghost stays as a guide while it moves.
+3. **The puppet carries it out, and now balance counts:**
+   - A foot steps there and stays planted (`AutoStep` plant). Automatic steps use the other foot to catch the balance.
+   - A hand reaches there and stays until the next hand is placed (`StringFlick` hold).
+   - A target further than a comfortable step (`stepReach` 0.55 H; range `stepRange` 1.1 H), or further than the arm reaches (`reach` 1.15 x arm; range `range` 2 x), pulls the body toward it (`overreachPull`). Lean against the momentum.
+   - Release the left pinch before the next selection.
+- **Tested:**
+  - A committed 0.3 H step lands exactly on target and stays, without losing balance.
+  - A hand reaches a box top within 0.04 H and stays held.
+  - A 0.95 H step drags the body forward 0.7 H, staggering.
+  - A 3 H target can't be chosen.
+  - A shove and a 50° lean during selection can't knock it over.
 
-**Lean is calmer:**
-- Forward/back (right palm pitch) ignores the first 6° of tilt, then leans 0.5° per degree.
-- Sideways (left palm roll) ignores the first 12°, then leans 0.35° per degree, since sideways falls came too easily.
-- Settings on `BalanceMonitor`: `foreLeanDeadZone`, `sideLeanDeadZone`, `leanControl`, `sideLeanControl`.
+**Lean from the line between the hands** (Point & Place). Think of holding an invisible bar between your palms: the puppet leans toward the end of the bar that's lower, by how steeply it slopes.
+- Hands side by side, right one lower: lean right.
+- One hand in front of the other, front one lower: lean forward.
+- The line at the moment you connect counts as level. The first 8° of slope are ignored (`handLineDeadZone`), then 0.45° of lean per degree (`handLineControl`), up to 20°.
+- The crosses no longer tilt with the palms in this mode. The older palm lean (left roll / right pitch) is used by the other control schemes (`BalanceMonitor.leanSource`).
 
 **Pinch & Flick** (`fingerAction = PinchFlick`, the earlier scheme, still available) replaces finger lifting:
 

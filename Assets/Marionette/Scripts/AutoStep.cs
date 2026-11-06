@@ -44,6 +44,10 @@ namespace Marionette
         bool m_Stagger;
 
         public bool Stepping => m_Leg >= 0;
+        // Feet the player put down on purpose: they keep their spot (no settling back under the body) until they step again.
+        readonly bool[] m_Planted = new bool[2];
+        bool m_PlantOnLand;
+        public bool IsPlanted(int leg) => leg is 0 or 1 && m_Planted[leg];
         readonly bool[] m_Held = new bool[2];
         /// <summary>A foot the player is dragging (StringFlick): automatic steps leave it alone.</summary>
         public void SetHeld(int leg, bool held) { if (leg is 0 or 1) m_Held[leg] = held; }
@@ -76,9 +80,14 @@ namespace Marionette
         public Rigidbody Foot(int leg) => Init() ? m_Legs[leg].GetComponent<Rigidbody>() : null;
 
         /// <summary>Step foot `leg` (0 left, 1 right) to a point on the ground.</summary>
-        public void Begin(int leg, Vector3 target, bool stagger)
+        public void Begin(int leg, Vector3 target, bool stagger) => Begin(leg, target, stagger, plant: false);
+
+        /// <summary>plant: the player chose this spot, so the foot stays there after landing.</summary>
+        public void Begin(int leg, Vector3 target, bool stagger, bool plant)
         {
             if (!Init()) return;
+            if (leg is 0 or 1) m_Planted[leg] = false;
+            m_PlantOnLand = plant;
             if (m_Leg >= 0) RestoreDrive();
             m_Leg = leg;
             // Spring and damper off while swinging: the damper alone would drag the body along at the foot's speed.
@@ -113,7 +122,7 @@ namespace Marionette
             // Legs settle back toward the built stance (not the one mid-swing).
             float k = 1f - Mathf.Exp(-legRecenter * dt);
             for (int i = 0; i < 2; i++)
-                if (i != m_Leg)
+                if (i != m_Leg && !m_Planted[i])
                     m_Legs[i].connectedAnchor = Vector3.Lerp(m_Legs[i].connectedAnchor, m_RestAnchor[i], k);
 
             if (m_Leg < 0) return;
@@ -152,6 +161,13 @@ namespace Marionette
             int leg = m_Leg;
             RestoreDrive();
             m_Leg = -1;
+            if (m_PlantOnLand && leg is 0 or 1)
+            {
+                m_Planted[leg] = true; // keep it where it was put: the leg's spring rests here now
+                var j = m_Legs[leg];
+                j.connectedAnchor = j.connectedBody.transform.InverseTransformPoint(j.transform.TransformPoint(j.anchor));
+            }
+            m_PlantOnLand = false;
             StepCount++;
             float keep = 1f - (m_Stagger ? staggerAbsorb : absorb);
             foreach (var id in new[] { PuppetNodeId.Center, PuppetNodeId.Head })
@@ -169,6 +185,7 @@ namespace Marionette
             if (!Init()) return;
             RestoreDrive();
             m_Leg = -1;
+            m_Planted[0] = m_Planted[1] = false;
             for (int i = 0; i < 2; i++) m_Legs[i].connectedAnchor = m_RestAnchor[i];
         }
     }

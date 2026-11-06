@@ -62,6 +62,12 @@ namespace Marionette
         public virtual void ResetPose() { }
 
         /// <summary>
+        /// Upper-body lean from the line between the two hands, if this input measures it: a world-space tilt of
+        /// "up" toward where the line slopes down to, by how steeply. False: lean comes from the palms instead.
+        /// </summary>
+        public virtual bool ReadLean(out Quaternion lean) { lean = Quaternion.identity; return false; }
+
+        /// <summary>
         /// True if this input's translation is measured relative to the player and stays within arm's
         /// reach, so reaching past the edge can mean "travel" (see PuppetTravel). The keyboard is
         /// unbounded and moves the crosses directly, so it doesn't use travel.

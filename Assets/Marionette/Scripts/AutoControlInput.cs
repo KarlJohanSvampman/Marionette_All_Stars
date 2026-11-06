@@ -48,6 +48,14 @@ namespace Marionette
 
         public override bool SupportsTravel => m_Active != null && m_Active.SupportsTravel;
 
+        public override bool ReadLean(out Quaternion lean)
+        {
+            var src = Pick();
+            if (src != null) return src.ReadLean(out lean);
+            lean = Quaternion.identity;
+            return false;
+        }
+
         public override void ResetPose()
         {
             if (hands != null) hands.ResetPose();
